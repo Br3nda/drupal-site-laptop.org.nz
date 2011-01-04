@@ -1,0 +1,13 @@
+name = Flickr Rippr - Tags
+description = Syncs tags on flickr photos to photos imported via Flickr Rippr module
+package = Flickr
+
+core = 6.x
+dependencies[] = flickrrippr
+dependencies[] = taxonomy
+; Information added by drupal.org packaging script on 2010-11-21
+version = "6.x-6.11"
+core = "6.x"
+project = "flickrrippr"
+datestamp = "1290304241"
+

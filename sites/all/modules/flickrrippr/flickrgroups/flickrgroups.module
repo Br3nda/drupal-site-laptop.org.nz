@@ -1,0 +1,179 @@
+<?php
+
+function flickrgroups_views_api() {
+  return array(
+    'api' => 2,
+  );
+}
+
+
+/**
+ * Implementation of hook_menu().
+ */
+function flickrgroups_menu() {
+  $items['flickr/groups'] = array(
+    'title' => 'Flickr Groups',
+    'type' => MENU_NORMAL_ITEM,
+    'page callback' => 'flickrgroup_admin_page',
+    'access arguments' => array('administer imported flickr groups'),
+    'file' => 'flickrgroups.content.inc',
+  );
+  $items['flickr/groups/add'] = array(
+    'title' => 'Flickr Groups',
+    'type' => MENU_CALLBACK,
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('flickrgroups_admin_form'),
+    'access arguments' => array('administer imported flickr groups'),
+    'file' => 'flickrgroups.content.inc',
+  );
+  $items['flickr/groups/%'] = array(
+    'type' => MENU_CALLBACK,
+    'page callback' => 'flickrgroup_page',
+    'page arguments' => array(2),
+    'access arguments' => array('administer imported flickr groups'),
+    'file' => 'flickrgroups.content.inc',
+  );
+  
+  return $items;
+}
+
+/**
+ * Implementation of hook_perm().
+ */
+function flickrgroups_perm() {
+  return array('administer imported flickr groups', 'view list of flickr groups');
+}
+
+function flickrgroups_get_group($flickrgroup_id) {
+  return db_fetch_object(db_query("SELECT * FROM {flickrgroups} WHERE flickrgroup_id='%s'", $flickrgroup_id));
+}
+
+function flickrgroups_get_all_groups() {
+  $result = db_query("SELECT * FROM {flickrgroups}");
+  $groups = array();
+  while ($g = db_fetch_object($result)) {
+    $groups[] = $g;
+  }
+  return $groups;
+}
+
+function flickrgroups_fetch_group($flickrgroup_id, $force_now=FALSE) {
+  drupal_set_message(t('Fetching group %id', array('%id' => $flickrgroup_id)));
+  $group = flickrgroups_get_group($flickrgroup_id);
+  if(!$group) {
+    drupal_set_message(t("Request to fetch invalid group with id = %id", array('%id' => $flickrgroup_id)), 'error');
+    return;
+  }
+  $flickr = flickrapi_phpFlickr();
+  if (!$flickr) {
+    drupal_set_message(t("Unable to query flickr.com"), 'error');
+    watchdog('flickrrippr', 'Unable to query flickr.com');
+  }
+  
+  $num_photos = variable_get('flickrrippr_num_per_fetch', 100);
+  $photos = $flickr->groups_pools_getPhotos($group->flickrgroup_id, array(), null, null, $num_photos);
+
+  $num_photos = 0;
+  if (!isset($photos['photo']) || !is_array($photos['photo'])) {
+    drupal_set_message(t("No photos found while querying flickr group %name", array('%name' => $group->name)));
+    return;
+  }
+  foreach ($photos['photo'] as $p) {
+    //hack to get around job_queue restricting descriptions to 255 chars
+    $description = t("Save node for flickr photo %id", array('%id' => $p['id']));
+    if (strlen($description) >= 255) {
+      $description = substr($description, 0, 254);
+    }
+    drupal_set_message($description);
+    if ($force_now) {
+      $node = flickrgroup_makenode($p['id'], $flickrgroup_id);
+    }
+    else {
+      job_queue_add('flickrgroup_makenode', $description, array($p['id'], $flickrgroup_id));
+    }
+    
+    $num_photos++;
+  }
+}
+
+function flickrgroup_makenode($photo_id, $group_id) {
+//   drupal_set_message(__FUNCTION__);
+  flickrrippr_makenode($photo_id);
+  
+  $result = db_fetch_object(db_query("SELECT * FROM {flickrgroup_photos} WHERE flickrphoto_id=%d AND flickrgroup_id='%s'", $photo_id, $group_id));
+  if (!$result) {
+    $gerund->flickrphoto_id = $photo_id;
+    $gerund->flickrgroup_id = $group_id;
+    drupal_write_record('flickrgroup_photos', $gerund);
+    drupal_set_message(t("Saved into group %id", array('%id' => $group_id)));
+  }
+  else {
+//     drupal_set_message("group record already set");
+  }
+}
+
+
+function flickrgroup_page($flickrgroup_id) {
+  $group = flickrgroups_get_group($flickrgroup_id);
+  if(!$group) {
+    drupal_set_message(t("Request for invalid group: %id", array('%id' => $flickrgroup_id)), 'error');
+    return '';
+  }
+  drupal_set_title($group->name);
+  $photos = flickrgroup_get_cached_photos($flickrgroup_id, 100);
+//   return nl2br(htmlentities(print_r($photos, 1)));
+  $output = '';
+  $output .= drupal_get_form('flickrgroups_fetch_form', $flickrgroup_id);
+
+  foreach($photos as $node) {
+//     $output .= $node->title;
+    $output .= l(
+      theme('image', flickrrippr_path($node, 's'), $node->title, $node->title, array(), FALSE),
+      'node/'. $node->nid,
+      array('html' => TRUE)
+    );
+  }
+  return $output;
+}
+
+function flickrgroup_get_cached_photos($flickrgroup_id, $limit=9) {
+  $result = db_query("SELECT * FROM {flickrgroup_photos} gp
+    INNER JOIN {flickrphotos} p ON gp.flickrphoto_id = p.flickrphoto_id
+    INNER JOIN {node} n ON p.nid = n.nid
+    AND gp.flickrgroup_id = '%s'
+    LIMIT %d", $flickrgroup_id, $limit);
+  $nodes = array();
+  while ($n = db_fetch_object($result)) {
+    $n->flickr_photo = (array)$n;
+    $nodes[] = $n;
+  }
+  return $nodes;
+}
+
+/**
+ * Implementation of hook_cron().
+ */
+function flickrgroups_cron() {
+  $result = db_query("SELECT * FROM {flickrgroups}");
+  while ($group = db_fetch_object($result)) {
+    flickrgroups_fetch_group($group->flickrgroup_id);
+  }
+}
+
+function flickrgroups_nodeapi(&$node, $op) {
+  if($op != 'alter' || $node->type != 'flickrrippr_photo') {
+    return;
+  }
+  $groups = flickrgroups_geT_groups_for_photo($node->flickr_photo['flickrphoto_id']);
+  foreach($groups as $g) {
+    $node->links['flickrgroup_'. $g->flickrgroup_id] = array('title' => $g->name, 'href' => 'flickr/groups/'. $g->flickrgroup_id);
+  }
+}
+function flickrgroups_get_groups_for_photo($photo_id) {
+  $result = db_query("SELECT * FROM {flickrgroups} g INNER JOIN {flickrgroup_photos} gp ON g.flickrgroup_id = gp.flickrgroup_id AND gp.flickrphoto_id=%d", $photo_id);
+  $groups = array();
+  while($g = db_fetch_object($result)) {
+    $groups[] = $g;
+  }
+  return $groups;
+}

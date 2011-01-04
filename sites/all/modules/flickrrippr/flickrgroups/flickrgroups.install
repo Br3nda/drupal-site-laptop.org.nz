@@ -1,0 +1,54 @@
+<?php
+// $Id: flickrgroups.install,v 1.1.2.7.2.3 2010/10/29 03:55:38 taniwha Exp $
+
+/**
+ * @file manages the database schema
+ */
+
+/**
+* Implementation of hook_install().
+*/
+function flickrgroups_install() {
+  drupal_install_schema('flickrgroups');
+}
+
+/**
+* Implementation of hook_uninstall().
+*/
+function flickrgroups_uninstall() {
+  drupal_uninstall_schema('flickrgroups');
+}
+/**
+* Implementation of hook_schema().
+*/
+function flickrgroups_schema() {
+  $schema['flickrgroups'] = array(
+    'fields' => array(
+      'flickrgroup_id' => array('type' => 'varchar', 'not null' => TRUE, 'length' => 100),
+      'name' => array('type' => 'varchar', 'not null' => TRUE, 'length' => 255),
+    ),
+    'primary key' => array('flickrgroup_id'),
+    'unique indexes' => array(
+      'name_unique' => array('name'),
+    ),
+  );
+
+  $schema['flickrgroup_photos'] = array(
+    'fields' => array(
+      'flickrgroup_id' => array('type' => 'varchar', 'not null' => TRUE, 'length' => 100),
+      'flickrphoto_id' => array('type' => 'int', 'not null' => TRUE, 'size' => 'big'),
+    ),
+    'primary key' => array('flickrgroup_id', 'flickrphoto_id'),
+  );
+  return $schema;
+}
+
+/**
+ * Add the flickrgroupphotos table
+ */
+function flickrgroups_update_6000() {
+  $schema = flickrgroups_schema();
+  
+  db_create_table($ret, 'flickrgroup_photos', $schema['flickrgroup_photos']);
+  return $ret;
+}

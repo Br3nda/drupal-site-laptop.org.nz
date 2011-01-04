@@ -1,0 +1,154 @@
+<?php
+
+/**
+ * 
+ */
+function flickrjpegcache_flickrrippr_path_options() {
+  return array('flickrjpegcache' => 'Local Jpeg Cache');
+}
+
+function flickrjpegcache_get_file($filename) {
+}
+
+/**
+ * implementatin of hook_flickrrippr_path
+ * Save the file on the file system - not as a deep linking src to flickr.com
+ */
+function flickrjpegcache_get_path(&$node, $size=FALSE, $refetch=FALSE) {
+  if ('flickrjpegcache' != variable_get('flickrrippr_path_handler', 0)) {
+    return;
+  }
+//   if (!$node->nid || !$node->vid) {
+//     drupal_set_message(t('Node not saved yet!'), 'error');
+//     return;
+//     foreach(debug_backtrace() as $line) { drupal_set_message(print_r($line, 1)); }
+//   }
+
+  if (!isset($node->flickr_photo)) {
+    flickrrippr_load($node);
+  }
+
+  $flickr_photo = $node->flickr_photo;
+//   drupal_set_message(__FUNCTION__ .' size='. $size);
+
+  if (!$flickr_photo) {
+    drupal_set_message(t('No flickr photo info attached to node!'), 'error');
+    drupal_set_message(print_r($node, 1), 'error');
+    return;
+  }
+  //make a file object which we'll save eventually
+  $file = new stdClass();
+  $file->filename = $flickr_photo['flickrphoto_id'] .'_'. $flickr_photo['secret'] . ($size ? '_'. $size : '') .'.jpg';
+  
+  if (!file_exists(file_directory_path() . DIRECTORY_SEPARATOR . $file->filename)) {
+    $refetch = TRUE;
+  }
+
+  if (!$refetch) {
+    return file_directory_path() . DIRECTORY_SEPARATOR . $file->filename;
+  }
+//   drupal_set_message("Fetching!");
+  
+  if (isset($node->files) && is_array($node->files)) {
+    foreach ($node->files as $fid => $f) {
+      if ($file->filename == $f->filename) {
+        $our_file = $f;
+        $file->fid = $fid;
+      }
+    }
+  }
+//   drupal_set_message("File id = $file->fid");
+
+  if (!$refetch) {
+    return $file->filename;
+  }
+
+  $sizes = _flickr_rippr_jpeg_sizes();
+  
+  $src = flickrrippr_path_remote($node, $size);
+//   drupal_set_message("Will download from $src");
+  $response = drupal_http_request($src);
+  
+  if ($response->code != 200) {
+    
+//     drupal_set_message(t('Failed to fetch jpeg from flickr. %httpcode %flickrmessage. Src = %src. Looking for a smaller image, if any.',
+//       array('%httpcode' => $response->code, '%flickrmessage' => isset($response->error) ? $response->error : '', '%src' => $src)), 'warning'
+//     );
+    //we should look for the next smaller size
+    $smaller  = _flickrjpegcache_next_smaller_size($size);
+    
+    if ($smaller) {
+//       drupal_set_message("Looking for a smaller image: $smaller");
+      return flickrjpegcache_get_path($node, $smaller, $refetch);
+    }
+
+    drupal_set_message(t('Failed to fetch jpeg from flickr for !link. There are no smaller images available. Giving up.', array('!link' =>l('Photo', 'node/'. $node->nid))), 'error');
+    return $src;
+   
+  }
+  
+  drupal_set_message(t("Successfully retrieved a copy of jpeg from flickr.com. Url was !src", array('!src' => l($src, $src))));
+
+  $file->filemime = file_get_mimetype($file->filename);
+
+  // Move uploaded files from PHP's upload_tmp_dir to Drupal's temporary directory.
+  // This overcomes open_basedir restrictions for future file operations.
+  $file->filepath = file_save_data($response->data, $file->filename, FILE_EXISTS_REPLACE);
+//   drupal_set_message(t("Jpeg saved locally as %file", array('%file' => $file->filepath)));
+
+  $file->description = $flickr_photo['title'];
+  $file->filesize = filesize($file->filepath);
+  $file->uid = 1; //to do -- fix this
+  $file->status = FILE_STATUS_TEMPORARY;
+  $file->timestamp = time();
+  $file->weight = 0;
+  $file->list = FALSE;
+  $file->new = !isset($file->fid);
+
+
+  $file->description .= ' ' . $sizes[$size];
+// 
+//   drupal_set_message(print_r($file, 1));
+  if (!empty($file->fid)) {
+    drupal_write_record('files', $file, array('fid'));
+    $file->new = FALSE;
+  }
+  else {
+    drupal_write_record('files', $file);
+    $file->new = TRUE;
+  }
+//   drupal_set_message(print_r($file, 1));
+//   drupal_set_message(print_r($flickr_photo, 1));
+
+  $node->files[$file->fid] = $file;
+  
+  
+  upload_save($node);
+
+  return file_directory_path() . DIRECTORY_SEPARATOR . $file->filename;
+
+  return $file;
+}
+
+function _flickrjpegcache_next_smaller_size($size) {
+  $sizes = _flickr_rippr_jpeg_sizes();
+  $prev = false;
+  foreach(array_keys($sizes) as $s) {
+    if ($s == $size) {
+      return $prev;
+    }
+    $prev = $s;
+  }
+}
+
+function flickrjpegcache_flickrrippr_node_alter($node, $details) {
+  if (!$node->nid || !$node->vid) {
+    drupal_set_message(t('Node not saved yet!') . print_r($node, 1), 'error');
+    return;
+  }
+
+  //copy the details, to be read in get_path().
+  
+  //force a refresh
+  flickrjpegcache_get_path($node, 'b', TRUE);
+}

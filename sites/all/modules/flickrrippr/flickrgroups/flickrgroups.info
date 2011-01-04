@@ -1,0 +1,10 @@
+name = Flickr Rippr - Groups
+package = Flickr
+dependencies[] = flickrrippr
+core = 6.x
+; Information added by drupal.org packaging script on 2010-11-21
+version = "6.x-6.11"
+core = "6.x"
+project = "flickrrippr"
+datestamp = "1290304241"
+

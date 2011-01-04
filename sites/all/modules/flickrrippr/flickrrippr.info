@@ -1,0 +1,14 @@
+name = Flickr Rippr
+description = Reads users's Flickr photo streams, and turns into nodes. Provides a block of thumbnails per user.
+package = Flickr
+
+core = 6.x
+dependencies[] = flickrapi
+dependencies[] = job_queue
+
+; Information added by drupal.org packaging script on 2010-11-21
+version = "6.x-6.11"
+core = "6.x"
+project = "flickrrippr"
+datestamp = "1290304241"
+

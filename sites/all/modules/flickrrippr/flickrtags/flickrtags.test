@@ -1,0 +1,104 @@
+<?php
+// $Id: flickrtags.test,v 1.1.2.2.2.1 2010/11/01 03:12:14 taniwha Exp $
+
+/**
+ * @file
+ * Unit Tests for flickrrippr module
+ * http://drupal.org/node/265762
+ */
+
+class FlickrRipprTagsTestCase extends DrupalWebTestCase {
+
+  /**
+   * User with rights to post SimpleTest Example content.
+   */
+  protected $privileged_user;
+  protected $apikey = '1611f2ad417e2276c05fa279654cc0e8';
+  protected $flickrusername = 'Flickr Rippr';
+  protected $nsid = '54551252@N03';
+
+  /**
+   * getInfo() returns properties that are displayed in the test selection form.
+   */
+  public static function getInfo() {
+    return array(
+      'name' => 'Flickr Rippr - Tags',
+      'description' => 'tests',
+      'group' => 'Flickr Rippr',
+    );
+  }
+
+  /**
+   * setUp() performs any pre-requisite tasks that need to happen.
+   */
+  public function setUp() {
+    // Enable any modules required for the test.
+    parent::setUp('flickrrippr', 'flickrapi', 'job_queue', 'taxonomy', 'flickrtags');
+
+    $this->admin_user = $this->drupalCreateUser( array('Administer global flickr api settings', 'administer site configuration'));
+    $this->normal_user = $this->drupalCreateUser( array('Configure own blogged flickr stream'));
+
+    $this->_configureFlickrApi();
+    $this->_configureTaxonomy();
+  }
+
+  function _configureTaxonomy() {
+    $this->drupalLogin($this->admin_user);
+    $this->drupalGet('admin/flickr/flickrrippr');
+    $this->clickLink('Add vocabulary');
+    $form = array(
+      'name' => 'Flickr Tags',
+      'nodes' => array('flickrrippr_photo'),
+      'settings' => array('tags')
+    );
+    $this->drupalPost($this->getUrl(), $form , 'Save');
+    $this->assertText('Flickr Tags');
+    $this->drupalLogout();
+  }
+
+  function _configureFlickrApi() {
+    //log in as admin
+    $this->drupalLogin($this->admin_user);
+//    $this->verbose(print_r($this->admin_user, 1));
+
+    //configure the flickr api module
+
+    $this->drupalGet('admin/settings/flickrapi');
+    $this->assertResponse(200);
+    $this->assertText('API Key');
+    $form['flickrapi_api_key'] = $this->apikey;
+    $form['flickrapi_cache_duration'] = 900;
+    $this->drupalPost('admin/settings/flickrapi', $form, 'Save configuration');
+    $this->assertResponse(200);
+
+    $this->refreshVariables();
+    $this->drupalLogout();
+  }
+
+
+  function testAdminScreen() {
+
+    //configure flickrrippr
+    $this->drupalGet('admin/flickr/flickrrippr');
+
+    $this->assertText('Flickr Tags');
+    $this->assertText('Vocabulary for tags');
+    $this->assertText('Import tags?');
+
+    $form = array(
+      'import_tags' => TRUE,
+      'flickrtags' => 'Flickr Tags',
+    );
+    
+    $this->drupalPost('admin/flickr/flickrrippr', $form, 'Save');
+
+    
+
+
+    $this->drupalLogout();
+  }
+  
+
+
+
+}
