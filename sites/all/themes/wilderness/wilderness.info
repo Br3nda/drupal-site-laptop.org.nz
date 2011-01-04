@@ -1,0 +1,22 @@
+; $Id: wilderness.info,v 1.1.2.1 2009/07/06 08:03:14 agileware Exp $
+name = Wilderness
+description = Tableless, multi-column, fixed width theme
+screenshot = screenshot.png
+core = 6.x
+engine = phptemplate
+regions[left] = Left sidebar
+regions[content] = Content
+regions[navigation] = Menu
+regions[copyright] = Copyright
+stylesheets[all][] = style.css
+scripts[] = script.js
+features[] = logo
+features[] = mission
+features[] = comment_user_picture
+features[] = favicon
+; Information added by drupal.org packaging script on 2009-07-06
+version = "6.x-1.0-beta1"
+core = "6.x"
+project = "wilderness"
+datestamp = "1246867872"
+
